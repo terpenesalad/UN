@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    working-directory: Unreel-android/unreel
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,4 +30,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Unreel-apk
-          path: Unreel.apk
+          path: Unreel-android/unreel/Unreel.apk
