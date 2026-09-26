@@ -3,6 +3,8 @@ name: Build APK
 on:
   push:
   workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -31,3 +33,8 @@ jobs:
         with:
           name: Unreel-apk
           path: Unreel-android/unreel/Unreel.apk
+      - name: Attach APK to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Unreel-android/unreel/Unreel.apk
