@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Unreel</string>
+    <string name="guard_description">Unreel watches which app is on screen so it can close Reels, Shorts and other short-form video viewers, block sites you choose, and enforce your daily time limits. It does not record, store or send anything you see or type.</string>
+</resources>
