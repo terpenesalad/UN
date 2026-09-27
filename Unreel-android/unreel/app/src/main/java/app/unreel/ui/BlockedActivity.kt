@@ -3,6 +3,7 @@ package app.unreel.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.text.format.DateFormat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -30,49 +31,107 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.unreel.data.Catalog
+import app.unreel.data.CustomApps
 import app.unreel.data.Prefs
-import app.unreel.data.SocialApp
+import app.unreel.data.Rules
+import app.unreel.data.Sites
 import app.unreel.data.UsageStore
+import app.unreel.data.nameOf
+import java.util.Date
 
-/** Full-screen stop shown when a limit is reached or a blocked app is opened. */
+/** Full-screen stop shown when a rule kicks in. */
 class BlockedActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_APP = "app"
         const val EXTRA_REASON = "reason"
+        const val EXTRA_UNTIL = "until"
         const val REASON_LIMIT = "limit"
         const val REASON_APP = "app_blocked"
+        const val REASON_SCHEDULE = "schedule"
+        const val REASON_BREAK = "break"
 
-        fun intent(context: Context, appId: String, reason: String): Intent =
+        fun intent(context: Context, id: String, reason: String, until: Long = 0L): Intent =
             Intent(context, BlockedActivity::class.java)
-                .putExtra(EXTRA_APP, appId)
+                .putExtra(EXTRA_APP, id)
                 .putExtra(EXTRA_REASON, reason)
+                .putExtra(EXTRA_UNTIL, until)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val app = Catalog.byId(intent.getStringExtra(EXTRA_APP))
+        val id = intent.getStringExtra(EXTRA_APP) ?: ""
         val reason = intent.getStringExtra(EXTRA_REASON) ?: REASON_LIMIT
+        val until = intent.getLongExtra(EXTRA_UNTIL, 0L)
+        val isSite = Sites.isSiteId(id)
+        val name = if (id.isEmpty()) "This app" else nameOf(id)
+        val untilText = if (until > 0L) DateFormat.getTimeFormat(this).format(Date(until)) else ""
 
+        val title: String
+        val body: String
+        when (reason) {
+            REASON_APP -> {
+                title = "$name is blocked"
+                body = "$name is all short-form video, so Unreel keeps it closed. You can change this in the Limits tab."
+            }
+            REASON_SCHEDULE -> {
+                title = "$name is off right now"
+                body = "You've blocked $name at this time of day. It's available again at $untilText."
+            }
+            REASON_BREAK -> {
+                title = "Time for a break"
+                body = "You've reached your ${Rules.fmt(Rules.get(id).sessionMinutes)} session limit for $name. " +
+                    "It's available again at $untilText."
+            }
+            else -> {
+                title = "That's your $name time for today"
+                body = "You set a daily limit of ${Rules.fmt(Prefs.limitMinutes(id))}. It resets at midnight." +
+                    if (isSite) " Other websites still work." else ""
+            }
+        }
+
+        val extra = Prefs.extraMinutes
+        val maxExt = Prefs.maxExtensions
+        val extAllowed = maxExt == 0 || UsageStore.extensionsUsed(id) < maxExt
         val onMore: (() -> Unit)? =
-            if (app != null && reason == REASON_LIMIT && !Prefs.strictMode) {
+            if (reason == REASON_LIMIT && id.isNotEmpty() && extra > 0 && extAllowed && !Prefs.strictMode) {
                 {
-                    UsageStore.addBonus(app.id, 5)
-                    val launch = app.packages.firstNotNullOfOrNull { packageManager.getLaunchIntentForPackage(it) }
-                    if (launch != null) startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    UsageStore.addBonus(id, extra)
+                    UsageStore.addExtension(id)
+                    reopen(id)
                     finish()
                 }
             } else {
                 null
             }
 
+        // For a website the browser underneath is on a neutral page, so just close this screen.
+        val onClose: () -> Unit = if (isSite) ({ finish() }) else ({ goHome() })
+
         setContent {
             UnreelTheme {
-                BlockedScreen(app, reason, onHome = { goHome() }, onMore = onMore)
+                BlockedScreen(
+                    title = title,
+                    body = body,
+                    closeLabel = if (isSite) "Close" else "Back to home screen",
+                    moreLabel = "$extra more minutes",
+                    onClose = onClose,
+                    onMore = onMore,
+                )
             }
         }
+    }
+
+    /** Reopens the app after "more time". For a website, closing returns to the browser. */
+    private fun reopen(id: String) {
+        val pkgs = when {
+            CustomApps.isCustomId(id) -> listOf(CustomApps.pkgOf(id))
+            else -> Catalog.byId(id)?.packages ?: emptyList()
+        }
+        val launch = pkgs.firstNotNullOfOrNull { packageManager.getLaunchIntentForPackage(it) }
+        if (launch != null) startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     private fun goHome() {
@@ -86,19 +145,15 @@ class BlockedActivity : ComponentActivity() {
 }
 
 @Composable
-private fun BlockedScreen(app: SocialApp?, reason: String, onHome: () -> Unit, onMore: (() -> Unit)?) {
-    BackHandler { onHome() }
-    val name = app?.name ?: "This app"
-    val limit = app?.let { Prefs.limitMinutes(it.id) } ?: 0
-
-    val title = if (reason == BlockedActivity.REASON_APP) "$name is blocked" else "That's your $name time for today"
-    val body = if (reason == BlockedActivity.REASON_APP) {
-        "$name is all short-form video, so Unreel keeps it closed. You can change this in Unreel's Apps tab."
-    } else {
-        "You set a daily limit of ${formatMinutes(limit)}. It resets at midnight. " +
-            "Messages from friends will still be there tomorrow."
-    }
-
+private fun BlockedScreen(
+    title: String,
+    body: String,
+    closeLabel: String,
+    moreLabel: String,
+    onClose: () -> Unit,
+    onMore: (() -> Unit)?,
+) {
+    BackHandler { onClose() }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             Modifier
@@ -128,9 +183,9 @@ private fun BlockedScreen(app: SocialApp?, reason: String, onHome: () -> Unit, o
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(32.dp))
-            Button(onClick = onHome, modifier = Modifier.fillMaxWidth()) { Text("Back to home screen") }
+            Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) { Text(closeLabel) }
             if (onMore != null) {
-                TextButton(onClick = onMore) { Text("5 more minutes") }
+                TextButton(onClick = onMore) { Text(moreLabel) }
             }
         }
     }

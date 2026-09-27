@@ -65,6 +65,24 @@ object UsageStore {
     }
 
     @Synchronized
+    fun extensionsUsed(id: String, date: String = today()): Int = sp.getInt("ext|$date|$id", 0)
+
+    @Synchronized
+    fun addExtension(id: String) {
+        val key = "ext|${today()}|$id"
+        sp.edit().putInt(key, sp.getInt(key, 0) + 1).apply()
+    }
+
+    /** Wall-clock time (ms) until which a forced break is in effect for [id]. */
+    @Synchronized
+    fun breakUntil(id: String): Long = sp.getLong("break|$id", 0L)
+
+    @Synchronized
+    fun setBreakUntil(id: String, millis: Long) {
+        sp.edit().putLong("break|$id", millis).apply()
+    }
+
+    @Synchronized
     fun reset() {
         pendingSeconds.clear()
         sp.edit().clear().apply()

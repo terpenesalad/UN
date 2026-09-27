@@ -14,16 +14,27 @@ android {
         applicationId = "app.unreel"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.2.0"
+    }
+
+    signingConfigs {
+        // A fixed key so each new build installs over the previous one.
+        // It lives in the repo, which is fine for a personal sideloaded app.
+        // Use a private key (kept out of the repo) before publishing to the Play Store.
+        create("sideload") {
+            storeFile = file("unreel-signing.p12")
+            storeType = "pkcs12"
+            storePassword = "unreel-sideload"
+            keyAlias = "unreel"
+            keyPassword = "unreel-sideload"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the APK installs straight away.
-            // Swap in your own keystore before publishing to the Play Store.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("sideload")
         }
     }
 

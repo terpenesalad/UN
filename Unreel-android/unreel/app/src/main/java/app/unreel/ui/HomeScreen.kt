@@ -42,9 +42,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import app.unreel.data.Catalog
 import app.unreel.data.Prefs
-import app.unreel.data.SocialApp
+import app.unreel.data.allTracked
 import app.unreel.data.UsageStore
 import app.unreel.guard.GuardStatus
 import kotlinx.coroutines.delay
@@ -52,7 +51,7 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
-private data class AppToday(val app: SocialApp, val minutes: Int, val limit: Int)
+private data class AppToday(val name: String, val minutes: Int, val limit: Int)
 
 private data class HomeSnapshot(
     val guardOn: Boolean,
@@ -64,13 +63,14 @@ private data class HomeSnapshot(
 
 private fun takeSnapshot(context: Context): HomeSnapshot {
     val today = LocalDate.now()
-    val perApp = Catalog.apps.map {
-        AppToday(it, (UsageStore.seconds(it.id, today.toString()) / 60L).toInt(), Prefs.limitMinutes(it.id))
+    val tracked = allTracked()
+    val perApp = tracked.map {
+        AppToday(it.name, (UsageStore.seconds(it.id, today.toString()) / 60L).toInt(), Prefs.limitMinutes(it.id))
     }
     val week = (6 downTo 0).map { back ->
         val date = today.minusDays(back.toLong())
         val label = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
-        val seconds = Catalog.apps.sumOf { UsageStore.seconds(it.id, date.toString()) }
+        val seconds = tracked.sumOf { UsageStore.seconds(it.id, date.toString()) }
         label to (seconds / 60L).toInt()
     }
     return HomeSnapshot(
@@ -167,11 +167,11 @@ fun HomeScreen() {
             WeekChart(snap.week)
         }
 
-        SectionCard("Today by app") {
+        SectionCard("Today by app and site") {
             snap.perApp.forEach { row ->
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row {
-                        Text(row.app.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                        Text(row.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                         Text(
                             if (row.limit > 0) "${formatMinutes(row.minutes)} of ${formatMinutes(row.limit)}"
                             else formatMinutes(row.minutes),

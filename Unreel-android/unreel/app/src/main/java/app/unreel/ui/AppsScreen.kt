@@ -1,38 +1,53 @@
 package app.unreel.ui
 
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.unreel.data.Catalog
+import app.unreel.data.CustomApps
 import app.unreel.data.Mode
 import app.unreel.data.Prefs
-import app.unreel.data.SocialApp
-
-private val LIMIT_OPTIONS = listOf(0, 15, 30, 45, 60, 90, 120)
+import app.unreel.data.Rules
+import app.unreel.data.UsageStore
 
 @Composable
 fun AppsScreen(gate: Gate) {
+    var editing by rememberSaveable { mutableStateOf<String?>(null) }
+    val current = editing
+    if (current != null) {
+        RuleEditor(current, gate, onBack = { editing = null }, onRemoved = { editing = null })
+        return
+    }
+
+    var custom by remember { mutableStateOf(CustomApps.list()) }
+    var showPicker by remember { mutableStateOf(false) }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -41,79 +56,118 @@ fun AppsScreen(gate: Gate) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column {
-            Text("Apps", style = MaterialTheme.typography.headlineMedium)
+            Text("Limits", style = MaterialTheme.typography.headlineMedium)
             Text(
-                "Choose what to block and set daily limits. Everything else in these apps keeps working.",
+                "Tap anything to set a daily limit, session limit with breaks, or blocked times.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Catalog.apps.forEach { AppCard(it, gate) }
+
+        SectionCard("Social apps") {
+            Catalog.apps.forEach { app ->
+                val blockNote = when {
+                    !Prefs.blockShortForm(app.id) -> null
+                    app.mode == Mode.WHOLE_APP -> "Blocked"
+                    else -> "${app.shortFormName} blocked"
+                }
+                val summary = Rules.summary(Rules.get(app.id))
+                TrackedRow(
+                    iconPkg = app.packages.first(),
+                    name = app.name,
+                    subtitle = listOfNotNull(blockNote, summary.takeIf { it != "No limits" || blockNote == null })
+                        .joinToString(" · "),
+                    id = app.id,
+                    onClick = { editing = app.id },
+                )
+            }
+        }
+
+        SectionCard("Your apps") {
+            if (custom.isEmpty()) {
+                Text(
+                    "Add any app on your phone, like games, Discord, Netflix or X.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            custom.forEach { pkg ->
+                val id = CustomApps.id(pkg)
+                TrackedRow(
+                    iconPkg = pkg,
+                    name = Prefs.appLabel(pkg),
+                    subtitle = Rules.summary(Rules.get(id)),
+                    id = id,
+                    onClick = { editing = id },
+                )
+            }
+            OutlinedButton(onClick = { showPicker = true }) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Add apps")
+            }
+        }
+
+        WebsitesCard(onOpen = { editing = it })
+    }
+
+    if (showPicker) {
+        AppPickerDialog(
+            onDismiss = { showPicker = false },
+            onAdd = { picked ->
+                picked.forEach { app ->
+                    CustomApps.add(app.pkg, app.label)
+                    val id = CustomApps.id(app.pkg)
+                    if (Rules.get(id).isEmpty) Prefs.setLimitMinutes(id, 30)
+                }
+                custom = CustomApps.list()
+                showPicker = false
+                if (picked.size == 1) editing = CustomApps.id(picked.first().pkg)
+            },
+        )
     }
 }
 
+/** One app or site in a list: icon, name, rule summary, today's time. */
 @Composable
-private fun AppCard(app: SocialApp, gate: Gate) {
-    var block by remember { mutableStateOf(Prefs.blockShortForm(app.id)) }
-    var limit by remember { mutableIntStateOf(Prefs.limitMinutes(app.id)) }
-    val wholeApp = app.mode == Mode.WHOLE_APP
-
-    SectionCard(app.name) {
-        if (app.experimental) {
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
-            ) {
-                Text(
-                    "Beta: detection may miss some screens",
-                    Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
+fun TrackedRow(
+    iconPkg: String?,
+    name: String,
+    subtitle: String,
+    id: String,
+    onClick: () -> Unit,
+    iconSize: Dp = 36.dp,
+) {
+    val used = (UsageStore.seconds(id) / 60L).toInt()
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (iconPkg != null) {
+            AppIcon(iconPkg, iconSize)
+            Spacer(Modifier.width(12.dp))
         }
-
-        SettingSwitch(
-            title = if (wholeApp) "Block ${app.name}" else "Block ${app.shortFormName}",
-            description = if (wholeApp) {
-                "${app.name} is all short-form video, so the whole app stays closed while this is on."
-            } else {
-                "Closes the ${app.shortFormName} viewer the moment it opens. Feed, stories and messages stay."
-            },
-            checked = block,
-        ) { on ->
-            if (on) {
-                Prefs.setBlockShortForm(app.id, true)
-                block = true
-            } else {
-                gate.loosen {
-                    Prefs.setBlockShortForm(app.id, false)
-                    block = false
-                }
-            }
+        Column(Modifier.weight(1f)) {
+            Text(name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-
-        Text("Daily limit", style = MaterialTheme.typography.bodyLarge)
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LIMIT_OPTIONS.forEach { option ->
-                FilterChip(
-                    selected = limit == option,
-                    onClick = {
-                        if (option != limit) {
-                            val loosening = option == 0 || (limit != 0 && option > limit)
-                            val apply: () -> Unit = {
-                                Prefs.setLimitMinutes(app.id, option)
-                                limit = option
-                            }
-                            if (loosening) gate.loosen(apply) else apply()
-                        }
-                    },
-                    label = { Text(if (option == 0) "None" else formatMinutes(option)) },
-                )
-                Spacer(Modifier.width(8.dp))
-            }
-        }
+        Text(
+            Rules.fmt(used),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

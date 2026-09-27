@@ -26,6 +26,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +50,8 @@ import app.unreel.guard.SiteMatcher
 fun SettingsScreen(gate: Gate) {
     val context = LocalContext.current
     var strict by remember { mutableStateOf(Prefs.strictMode) }
+    var extraMinutes by remember { mutableIntStateOf(Prefs.extraMinutes) }
+    var maxExtensions by remember { mutableIntStateOf(Prefs.maxExtensions) }
     var browserShortForm by remember { mutableStateOf(Prefs.browserShortForm) }
     var sites by remember { mutableStateOf(Prefs.blockedSites.sorted()) }
     var dnsOn by remember { mutableStateOf(Prefs.dnsFilter) }
@@ -91,6 +98,48 @@ fun SettingsScreen(gate: Gate) {
                     gate.loosen {
                         Prefs.strictMode = false
                         strict = false
+                    }
+                }
+            }
+        }
+
+        SectionCard("\"More time\" button") {
+            Text(
+                "Shown when you hit a daily limit (hidden in strict mode).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text("Extra time per tap", style = MaterialTheme.typography.bodyLarge)
+            DurationPicker(
+                value = extraMinutes,
+                presets = listOf(1, 5, 10, 15, 30),
+                noneLabel = "Off",
+                dialogTitle = "Extra time per tap",
+                maxMinutes = 120,
+            ) { v ->
+                val apply = {
+                    Prefs.extraMinutes = v
+                    extraMinutes = v
+                }
+                if (v > extraMinutes) gate.loosen(apply) else apply()
+            }
+            if (extraMinutes > 0) {
+                Text("Times per day, per app or site", style = MaterialTheme.typography.bodyLarge)
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    listOf(1, 2, 3, 5, 0).forEach { n ->
+                        FilterChip(
+                            selected = maxExtensions == n,
+                            onClick = {
+                                val apply = {
+                                    Prefs.maxExtensions = n
+                                    maxExtensions = n
+                                }
+                                val looser = n == 0 || (maxExtensions != 0 && n > maxExtensions)
+                                if (looser) gate.loosen(apply) else apply()
+                            },
+                            label = { Text(if (n == 0) "Unlimited" else n.toString()) },
+                        )
+                        Spacer(Modifier.width(8.dp))
                     }
                 }
             }
@@ -188,7 +237,7 @@ fun SettingsScreen(gate: Gate) {
 
         Column(Modifier.padding(bottom = 8.dp)) {
             Text(
-                "Unreel 1.0",
+                "Unreel 1.2",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

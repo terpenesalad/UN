@@ -50,7 +50,7 @@ private fun AppRoot() {
                     selected = tab == 1,
                     onClick = { tab = 1 },
                     icon = { Icon(Icons.Filled.List, contentDescription = null) },
-                    label = { Text("Apps") },
+                    label = { Text("Limits") },
                 )
                 NavigationBarItem(
                     selected = tab == 2,
