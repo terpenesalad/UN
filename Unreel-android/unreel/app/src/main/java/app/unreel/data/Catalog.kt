@@ -89,7 +89,12 @@ object Catalog {
     fun byId(id: String?): SocialApp? = apps.firstOrNull { it.id == id }
 }
 
-/** Browsers and the view ID of their address bar. */
+private val FIREFOX_IDS = listOf("mozac_browser_toolbar_url_view", "mozac_browser_toolbar_edit_url_view")
+
+/**
+ * Browsers and the view ID of their address bar. If an ID stops matching after a
+ * browser update, UrlReader falls back to scanning the toolbar for the address.
+ */
 object Browsers {
     val urlBarIds: Map<String, List<String>> = mapOf(
         "com.android.chrome" to listOf("url_bar"),
@@ -98,8 +103,13 @@ object Browsers {
         "com.microsoft.emmx" to listOf("url_bar"),
         "com.vivaldi.browser" to listOf("url_bar"),
         "com.kiwibrowser.browser" to listOf("url_bar"),
-        "org.mozilla.firefox" to listOf("mozac_browser_toolbar_url_view", "url_bar_title"),
+        "org.mozilla.firefox" to FIREFOX_IDS,
+        "org.mozilla.firefox_beta" to FIREFOX_IDS,
+        "org.mozilla.fenix" to FIREFOX_IDS,
+        "org.mozilla.fennec_fdroid" to FIREFOX_IDS,
+        "io.github.forkmaintainers.iceraven" to FIREFOX_IDS,
         "org.mozilla.focus" to listOf("display_url", "mozac_browser_toolbar_url_view"),
+        "org.mozilla.klar" to listOf("display_url", "mozac_browser_toolbar_url_view"),
         "com.sec.android.app.sbrowser" to listOf("location_bar_edit_text"),
         "com.opera.browser" to listOf("url_field"),
         "com.duckduckgo.mobile.android" to listOf("omnibarTextInput"),

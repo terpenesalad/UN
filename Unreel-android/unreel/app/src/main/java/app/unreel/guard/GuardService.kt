@@ -40,6 +40,13 @@ class GuardService : AccessibilityService() {
     companion object {
         /** Where a browser is sent when a website's time is up. */
         private const val NEUTRAL_PAGE = "https://www.google.com/"
+
+        // Troubleshooting info shown in Settings (same process, so plain statics are fine).
+        @Volatile var lastBrowserPkg: String? = null
+        @Volatile var lastBrowserUrl: String? = null
+        @Volatile var lastBrowserHow: String? = null
+        @Volatile var lastBrowserAt: Long = 0L
+        @Volatile var lastBrowserSite: String? = null
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -123,13 +130,13 @@ class GuardService : AccessibilityService() {
     private fun readUrl(pkg: String): String? {
         val root = rootInActiveWindow ?: return null
         if (root.packageName?.toString() != pkg) return null
-        val ids = Browsers.urlBarIds[pkg] ?: return null
-        for (id in ids) {
-            val node = root.findAccessibilityNodeInfosByViewId("$pkg:id/$id").firstOrNull() ?: continue
-            // While the user is typing, the bar holds partial text. Only act on loaded pages.
-            if (node.isFocused) return null
-            val text = node.text?.toString()?.trim()
-            return if (text.isNullOrEmpty()) null else text
+        val result = UrlReader.read(root, pkg, resources.displayMetrics.heightPixels)
+        if (result is UrlReader.Result.Url) {
+            lastBrowserPkg = pkg
+            lastBrowserUrl = result.url
+            lastBrowserHow = result.how
+            lastBrowserAt = System.currentTimeMillis()
+            return result.url
         }
         return null
     }
@@ -155,6 +162,7 @@ class GuardService : AccessibilityService() {
         }
 
         val site = SiteMatcher.match(url, limited)
+        lastBrowserSite = site
         currentSite = site
         currentSitePkg = if (site != null) pkg else null
         if (site != null) enforce(Sites.id(site), pkg)

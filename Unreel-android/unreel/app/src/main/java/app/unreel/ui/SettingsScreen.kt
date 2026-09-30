@@ -26,6 +26,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.delay
+import app.unreel.guard.GuardStatus
+import app.unreel.guard.GuardService
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.width
@@ -227,6 +233,8 @@ fun SettingsScreen(gate: Gate) {
             }
         }
 
+        TroubleshootingCard()
+
         SectionCard("Your data") {
             Text(
                 "Everything Unreel knows stays on this phone. No account, no servers, no tracking.",
@@ -237,7 +245,7 @@ fun SettingsScreen(gate: Gate) {
 
         Column(Modifier.padding(bottom = 8.dp)) {
             Text(
-                "Unreel 1.2",
+                "Unreel 1.2.1",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -260,5 +268,50 @@ fun SettingsScreen(gate: Gate) {
                 TextButton(onClick = { confirmReset = false }) { Text("Cancel") }
             },
         )
+    }
+}
+
+/** Shows whether protection is running and what Unreel last read from a browser's address bar. */
+@Composable
+private fun TroubleshootingCard() {
+    val context = LocalContext.current
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val running = remember(now) { GuardStatus.isEnabled(context) }
+    val url = GuardService.lastBrowserUrl
+    val at = GuardService.lastBrowserAt
+    val pkg = GuardService.lastBrowserPkg
+    val site = GuardService.lastBrowserSite
+
+    SectionCard("Troubleshooting") {
+        Text(
+            if (running) "Protection is running." else "Protection is off. Turn it on from the Today tab.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text("Last address read from a browser", style = MaterialTheme.typography.bodyLarge)
+        if (url == null || at == 0L) {
+            Text(
+                "Nothing yet. Open a website in your browser for a few seconds, then come back here. " +
+                    "If this stays empty, Unreel can't read that browser's address bar.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            val secs = ((now - at) / 1000L).coerceAtLeast(0L)
+            val ago = if (secs < 60) "${secs}s ago" else "${secs / 60}m ago"
+            Text(url, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                "In ${pkg ?: "?"} · via ${GuardService.lastBrowserHow ?: "?"} · $ago\n" +
+                    if (site != null) "Matched your limit for $site, so time is being counted."
+                    else "Didn't match any website in your Limits.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
