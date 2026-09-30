@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Unreel"
 include(":app")
+// The app module lives next to this folder, at Unreel-android/app
+project(":app").projectDir = file("../app")
