@@ -1,6 +1,9 @@
 package app.unreel.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,8 +48,24 @@ fun AppsScreen(gate: Gate) {
         return
     }
 
-    var custom by remember { mutableStateOf(CustomApps.list()) }
-    var showPicker by remember { mutableStateOf(false) }
+    var showPicker by rememberSaveable { mutableStateOf(false) }
+    if (showPicker) {
+        AppPickerScreen(
+            onCancel = { showPicker = false },
+            onAdd = { picked ->
+                picked.forEach { app ->
+                    CustomApps.add(app.pkg, app.label)
+                    val id = CustomApps.id(app.pkg)
+                    if (Rules.get(id).isEmpty) Prefs.setLimitMinutes(id, 30)
+                }
+                showPicker = false
+                if (picked.size == 1) editing = CustomApps.id(picked.first().pkg)
+            },
+        )
+        return
+    }
+
+    val custom = CustomApps.list()
 
     Column(
         Modifier
@@ -83,6 +102,8 @@ fun AppsScreen(gate: Gate) {
             }
         }
 
+        WebsitesCard(onOpen = { editing = it })
+
         SectionCard("Your apps") {
             if (custom.isEmpty()) {
                 Text(
@@ -107,24 +128,6 @@ fun AppsScreen(gate: Gate) {
                 Text("Add apps")
             }
         }
-
-        WebsitesCard(onOpen = { editing = it })
-    }
-
-    if (showPicker) {
-        AppPickerDialog(
-            onDismiss = { showPicker = false },
-            onAdd = { picked ->
-                picked.forEach { app ->
-                    CustomApps.add(app.pkg, app.label)
-                    val id = CustomApps.id(app.pkg)
-                    if (Rules.get(id).isEmpty) Prefs.setLimitMinutes(id, 30)
-                }
-                custom = CustomApps.list()
-                showPicker = false
-                if (picked.size == 1) editing = CustomApps.id(picked.first().pkg)
-            },
-        )
     }
 }
 
@@ -137,6 +140,7 @@ fun TrackedRow(
     id: String,
     onClick: () -> Unit,
     iconSize: Dp = 36.dp,
+    letter: String? = null,
 ) {
     val used = (UsageStore.seconds(id) / 60L).toInt()
     Row(
@@ -148,6 +152,20 @@ fun TrackedRow(
     ) {
         if (iconPkg != null) {
             AppIcon(iconPkg, iconSize)
+            Spacer(Modifier.width(12.dp))
+        } else if (letter != null) {
+            Box(
+                Modifier
+                    .size(iconSize)
+                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    letter.uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
             Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {

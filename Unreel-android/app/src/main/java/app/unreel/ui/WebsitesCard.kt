@@ -41,13 +41,14 @@ fun WebsitesCard(onOpen: (String) -> Unit) {
             Sites.add(site)
             sites = Sites.list()
             input = ""
+            onOpen(Sites.id(site)) // go straight to its settings
         }
     }
 
     SectionCard("Websites") {
         Text(
-            "Limits for sites you visit in a browser (Firefox, Brave, Chrome, Samsung Internet, Edge, Opera, " +
-                "DuckDuckGo). When time's up, the browser switches to a new Google tab.",
+            "Track and limit sites like reddit.com in Firefox, Brave, Chrome, Samsung Internet, Edge, Opera " +
+                "and DuckDuckGo. Same options as apps: daily limit, sessions with breaks, blocked times.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -56,6 +57,7 @@ fun WebsitesCard(onOpen: (String) -> Unit) {
             val id = Sites.id(site)
             TrackedRow(
                 iconPkg = null,
+                letter = site.take(1),
                 name = site,
                 subtitle = Rules.summary(Rules.get(id)),
                 id = id,

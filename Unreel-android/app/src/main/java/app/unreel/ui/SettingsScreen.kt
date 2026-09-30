@@ -245,7 +245,7 @@ fun SettingsScreen(gate: Gate) {
 
         Column(Modifier.padding(bottom = 8.dp)) {
             Text(
-                "Unreel 1.2.1",
+                "Unreel 1.2.2",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
