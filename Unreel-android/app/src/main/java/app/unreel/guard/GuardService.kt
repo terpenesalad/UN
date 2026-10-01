@@ -56,6 +56,8 @@ class GuardService : AccessibilityService() {
     private var lastAction = 0L
     private var lastKick = 0L
     private var ticks = 0
+    /** Whether the phone was unlocked and in use at the last tick (to count unlocks). */
+    private var wasInUse = true
 
     /** The limited website currently on screen, and the browser showing it. */
     private var currentSite: String? = null
@@ -267,7 +269,11 @@ class GuardService : AccessibilityService() {
     private fun onTick() {
         val power = getSystemService(Context.POWER_SERVICE) as PowerManager
         val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        if (power.isInteractive && !keyguard.isKeyguardLocked) {
+        val inUse = power.isInteractive && !keyguard.isKeyguardLocked
+        if (inUse && !wasInUse) UsageStore.addUnlock()
+        wasInUse = inUse
+        if (inUse) {
+            UsageStore.addSeconds(UsageStore.SCREEN, 1L)
             val pkg = currentPkg
             val appId = CustomApps.targetFor(pkg)
             if (pkg != null && appId != null) {

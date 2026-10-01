@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -53,11 +54,17 @@ import java.util.Locale
 
 private data class AppToday(val name: String, val minutes: Int, val limit: Int)
 
+/** One day in the weekly chart: total screen time, and the part spent in tracked apps/sites. */
+private data class DayUse(val label: String, val screen: Int, val tracked: Int)
+
 private data class HomeSnapshot(
     val guardOn: Boolean,
+    val screenToday: Int,
+    val screenYesterday: Int,
+    val unlocksToday: Int,
     val totalToday: Int,
     val blocksToday: Int,
-    val week: List<Pair<String, Int>>,
+    val week: List<DayUse>,
     val perApp: List<AppToday>,
 )
 
@@ -70,11 +77,16 @@ private fun takeSnapshot(context: Context): HomeSnapshot {
     val week = (6 downTo 0).map { back ->
         val date = today.minusDays(back.toLong())
         val label = date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
-        val seconds = tracked.sumOf { UsageStore.seconds(it.id, date.toString()) }
-        label to (seconds / 60L).toInt()
+        val trackedMin = (tracked.sumOf { UsageStore.seconds(it.id, date.toString()) } / 60L).toInt()
+        val screenMin = (UsageStore.seconds(UsageStore.SCREEN, date.toString()) / 60L).toInt()
+        // Days before screen time was recorded only have tracked time; never show screen < tracked.
+        DayUse(label, maxOf(screenMin, trackedMin), trackedMin)
     }
     return HomeSnapshot(
         guardOn = GuardStatus.isEnabled(context),
+        screenToday = week.last().screen,
+        screenYesterday = week[week.size - 2].screen,
+        unlocksToday = UsageStore.unlocks(),
         totalToday = perApp.sumOf { it.minutes },
         blocksToday = UsageStore.blocks(),
         week = week,
@@ -158,12 +170,14 @@ fun HomeScreen() {
             }
         }
 
+        ScreenTimeCard(snap.screenToday, snap.screenYesterday, snap.unlocksToday)
+
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatTile("Social time today", formatMinutes(snap.totalToday), Modifier.weight(1f))
+            StatTile("Tracked apps & sites", formatMinutes(snap.totalToday), Modifier.weight(1f))
             StatTile("Short-form blocked", snap.blocksToday.toString(), Modifier.weight(1f))
         }
 
-        SectionCard("Last 7 days") {
+        SectionCard("Screen time, last 7 days") {
             WeekChart(snap.week)
         }
 
@@ -233,15 +247,52 @@ private fun StatTile(label: String, value: String, modifier: Modifier = Modifier
     }
 }
 
+/** Hero card: total unlocked screen time today, change vs yesterday, and unlock count. */
 @Composable
-private fun WeekChart(week: List<Pair<String, Int>>) {
-    val barColor = MaterialTheme.colorScheme.primary
-    val max = maxOf(1, week.maxOfOrNull { it.second } ?: 1)
+private fun ScreenTimeCard(today: Int, yesterday: Int, unlocks: Int) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                "Screen time today",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(formatMinutes(today), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold)
+            val diff = today - yesterday
+            val compare = when {
+                yesterday == 0 -> "Phone unlocked and in use"
+                diff == 0 -> "Same as yesterday so far"
+                diff < 0 -> "${formatMinutes(-diff)} less than yesterday so far"
+                else -> "${formatMinutes(diff)} more than all of yesterday"
+            }
+            Text(compare, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "$unlocks unlock${if (unlocks == 1) "" else "s"} today",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * One bar per day = total screen time. The bottom segment (solid) is time in tracked
+ * apps and sites; the top segment (light) is everything else. Same hue, two shades,
+ * separated by a 2dp surface gap; legend below so identity isn't colour-alone.
+ */
+@Composable
+private fun WeekChart(week: List<DayUse>) {
+    val trackedColor = MaterialTheme.colorScheme.primary
+    val otherColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+    val max = maxOf(1, week.maxOfOrNull { it.screen } ?: 1)
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row {
             week.forEach {
                 Text(
-                    if (it.second > 0) formatMinutes(it.second) else "",
+                    if (it.screen > 0) formatMinutes(it.screen) else "",
                     Modifier.weight(1f),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelSmall,
@@ -256,26 +307,52 @@ private fun WeekChart(week: List<Pair<String, Int>>) {
         ) {
             val slot = size.width / week.size
             val barWidth = slot * 0.5f
-            week.forEachIndexed { i, (_, minutes) ->
-                val h = maxOf(4f, size.height * minutes / max)
-                val isToday = i == week.lastIndex
-                drawRoundRect(
-                    color = if (isToday) barColor else barColor.copy(alpha = 0.4f),
-                    topLeft = Offset(i * slot + (slot - barWidth) / 2f, size.height - h),
-                    size = Size(barWidth, h),
-                    cornerRadius = CornerRadius(8f, 8f),
-                )
+            val gap = 2.dp.toPx()
+            val radius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+            week.forEachIndexed { i, day ->
+                val x = i * slot + (slot - barWidth) / 2f
+                val total = if (day.screen == 0) 0f else maxOf(4f, size.height * day.screen / max)
+                val trackedH = if (day.screen == 0) 0f else size.height * day.tracked / max
+                if (total == 0f) {
+                    drawRoundRect(otherColor, Offset(x, size.height - 4f), Size(barWidth, 4f), radius)
+                    return@forEachIndexed
+                }
+                val otherH = total - trackedH
+                if (otherH > gap) {
+                    drawRoundRect(otherColor, Offset(x, size.height - total), Size(barWidth, otherH - gap), radius)
+                }
+                if (trackedH > 0f) {
+                    drawRoundRect(trackedColor, Offset(x, size.height - trackedH), Size(barWidth, trackedH), radius)
+                }
             }
         }
         Row {
-            week.forEach {
+            week.forEachIndexed { i, day ->
                 Text(
-                    it.first,
+                    day.label,
                     Modifier.weight(1f),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (i == week.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
                 )
             }
         }
+        Row(
+            Modifier.padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LegendItem(trackedColor, "Tracked apps & sites")
+            LegendItem(otherColor, "Everything else")
+        }
+    }
+}
+
+@Composable
+private fun LegendItem(color: androidx.compose.ui.graphics.Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Canvas(Modifier.size(10.dp)) { drawRoundRect(color, cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())) }
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

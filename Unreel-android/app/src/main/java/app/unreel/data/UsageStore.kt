@@ -9,6 +9,8 @@ import java.time.LocalDate
  * so they share this in-memory buffer; it is flushed to disk every few seconds.
  */
 object UsageStore {
+    /** Tracking id for total time with the screen on and unlocked. */
+    const val SCREEN = "_screen"
     private lateinit var sp: SharedPreferences
     private val pendingSeconds = HashMap<String, Long>()
 
@@ -63,6 +65,15 @@ object UsageStore {
         val key = "bonus|${today()}|$appId"
         sp.edit().putInt(key, sp.getInt(key, 0) + minutes).apply()
     }
+
+    @Synchronized
+    fun addUnlock() {
+        val key = "unlocks|${today()}"
+        sp.edit().putInt(key, sp.getInt(key, 0) + 1).apply()
+    }
+
+    @Synchronized
+    fun unlocks(date: String = today()): Int = sp.getInt("unlocks|$date", 0)
 
     @Synchronized
     fun extensionsUsed(id: String, date: String = today()): Int = sp.getInt("ext|$date|$id", 0)
